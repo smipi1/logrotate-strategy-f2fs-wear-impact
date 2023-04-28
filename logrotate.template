@@ -1,0 +1,13 @@
+${LIVE_LOG} {
+    size 20K
+    rotate 1
+    postrotate
+        lz4 ${LIVE_LOG}.1 >>${OLD_LOG}
+    endscript
+}
+
+${OLD_LOG} {
+    size 100K
+    rotate 10
+}
+
