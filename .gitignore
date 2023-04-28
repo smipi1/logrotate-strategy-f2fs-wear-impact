@@ -3,4 +3,5 @@
 
 # Output
 /rootfs.img
-/rootfs/
+/rootfs/ 
+/stats.csv
