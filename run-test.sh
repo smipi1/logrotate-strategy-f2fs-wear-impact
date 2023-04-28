@@ -40,15 +40,37 @@ log() {
 
 accrete_log_for_one_rotation() {
     touch ${LIVE_LOG}
-    let CURRENT_SIZE="$(stat --printf='%s' ${LIVE_LOG})"
-    let MIN_NEW_SIZE="$((${CURRENT_SIZE} + ${LOG_ACCRETION_PER_ROTATION}))"
+    local CURRENT_SIZE="$(stat --printf='%s' ${LIVE_LOG})"
+    local MIN_NEW_SIZE="$((${CURRENT_SIZE} + ${LOG_ACCRETION_PER_ROTATION}))"
     while [ "$(stat --printf='%s' ${LIVE_LOG})" -lt "${MIN_NEW_SIZE}" ]; do
         log "one representative syslog message accreted to the log" >> ${LIVE_LOG}
     done
+    local NEW_SIZE="$(stat --printf='%s' ${LIVE_LOG})"
+    let "SIZE_LOGGED+=${NEW_SIZE}-${CURRENT_SIZE}"
 }
 
 do_rotation() {
     logrotate --state=${LOGROTATE_STATE_FILE} ${LOGROTATE_CONFIG}
+}
+
+space_separated_to_csv() {
+    sed 's/ \+/,/g'
+}
+
+print_stats_header() {
+    echo "seconds_elapsed size_logged files_in_tmp_log_dir size_in_tmp_log_dir files_in_var_log_dir size_in_var_log_dir major_number minor_number device_name reads_completed_successfully reads_merged sectors_read time_spent_reading_ms writes_completed writes_merged sectors_written time_spent_writing_ms ios_corrently_in_progress time_spent_doing_ios_ms weighted_time_spent_doing_ios discards_completed_successfully discards_merged sectors_discarded time_spent_discarding flush_requests_completed_successfully time_spent_flusing" | space_separated_to_csv >${STATS}
+}
+
+print_stats() {
+    local FILES_IN_TMP_LOG_DIR=$(ls -1 ${TMP_LOG_DIR} | wc -l)
+    local SIZE_IN_TMP_LOG_DIR=$(du -s ${TMP_LOG_DIR} | awk '{print $1 * 1024}')
+    local FILES_IN_VAR_LOG_DIR=$(ls -1 ${LOG_DIR} | wc -l)
+    local SIZE_IN_VAR_LOG_DIR=$(du -s ${LOG_DIR} | awk '{print $1 * 1024}')
+    local DISKSTATS=$(grep "${LOOP_DEVICE_NAME}" /proc/diskstats)
+    ( \
+        echo -n "${SECONDS_ELAPSED} ${SIZE_LOGGED} ${FILES_IN_TMP_LOG_DIR} ${SIZE_IN_TMP_LOG_DIR} ${FILES_IN_VAR_LOG_DIR} ${SIZE_IN_VAR_LOG_DIR} "; \
+        grep "${LOOP_DEVICE_NAME}" /proc/diskstats \
+    ) | space_separated_to_csv >>${STATS}
 }
 
 STATS=stats.csv
@@ -62,7 +84,6 @@ VAR_DIR=${ROOTFS_MOUNT_POINT}/var
 LOG_DIR=${VAR_DIR}/log
 LIVE_LOG=${TMP_LOG_DIR}/messages
 OLD_LOG=${LOG_DIR}/messages.lz4
-
 LOG_FILL_RATE_SIZE_HUMAN=20K
 LOG_FILL_RATE_SIZE=$(numfmt --from=iec ${LOG_FILL_RATE_SIZE_HUMAN})
 LOG_FILL_RATE_MINUTES=5
@@ -113,26 +134,7 @@ mkdir -p ${TMP_LOG_DIR} || error "cannot create ${TMP_LOG_DIR}"
 echo "configuring logrotate..."
 LIVE_LOG=$(realpath ${LIVE_LOG}) OLD_LOG=$(realpath ${OLD_LOG}) envsubst <${LOGROTATE_TEMPLATE} >${LOGROTATE_CONFIG} || error "cannot configure logrotate"
 
-space_separated_to_csv() {
-    sed 's/ \+/,/g'
-}
-
-print_stats_header() {
-    echo "seconds_elapsed files_in_tmp_log_dir size_in_tmp_log_dir files_in_var_log_dir size_in_var_log_dir major_number minor_number device_name reads_completed_successfully reads_merged sectors_read time_spent_reading_ms writes_completed writes_merged sectors_written time_spent_writing_ms ios_corrently_in_progress time_spent_doing_ios_ms weighted_time_spent_doing_ios discards_completed_successfully discards_merged sectors_discarded time_spent_discarding flush_requests_completed_successfully time_spent_flusing" | space_separated_to_csv >${STATS}
-}
-
-print_stats() {
-    local FILES_IN_TMP_LOG_DIR=$(ls -1 ${TMP_LOG_DIR} | wc -l)
-    local SIZE_IN_TMP_LOG_DIR=$(du -s ${TMP_LOG_DIR} | awk '{print $1 * 1024}')
-    local FILES_IN_VAR_LOG_DIR=$(ls -1 ${LOG_DIR} | wc -l)
-    local SIZE_IN_VAR_LOG_DIR=$(du -s ${LOG_DIR} | awk '{print $1 * 1024}')
-    local DISKSTATS=$(grep "${LOOP_DEVICE_NAME}" /proc/diskstats)
-    ( \
-        echo -n "${SECONDS_ELAPSED} ${FILES_IN_TMP_LOG_DIR} ${SIZE_IN_TMP_LOG_DIR} ${FILES_IN_VAR_LOG_DIR} ${SIZE_IN_VAR_LOG_DIR} "; \
-        grep "${LOOP_DEVICE_NAME}" /proc/diskstats \
-    ) | space_separated_to_csv >>${STATS}
-}
-
+SIZE_LOGGED=0
 SECONDS_ELAPSED=0
 print_stats_header
 print_stats
@@ -143,8 +145,6 @@ for i in {{1..1000}}; do
     print_stats
     echo ${SECONDS_ELAPSED}: ${TMP_LOG_DIR}/* ${LOG_DIR}/*
 done
-
-cp -a ${LOG_DIR} ./log-dir
 
 cleanup
 
