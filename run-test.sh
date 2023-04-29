@@ -73,7 +73,14 @@ print_stats() {
     ) | space_separated_to_csv >>${STATS}
 }
 
-STATS=stats.csv
+print_results() {
+    echo "RAM log rotates on:  ${MIN_NEW_LOG_SIZE_TO_ROTATE}B"
+    echo "eMMC log rotates on: ${MIN_LOG_SIZE_TO_ROTATE}B"
+    echo "Log files to keep:   ${LOG_FILES_TO_KEEP}"
+    ./analyze.py ${STATS}
+}
+
+RESULTS_ROOT_DIR=results
 ROOTFS_IMG=rootfs.img
 ROOTFS_SIZE=100M
 ROOTFS_MOUNT_POINT=rootfs
@@ -100,6 +107,13 @@ LOGROTATE_STATE_FILE=${VAR_DIR}/logrotate.state
 # Parameterizable via environment
 MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE:-${LOG_FILL_RATE_SIZE_HUMAN}}
 MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE:-100K}
+LOG_FILES_TO_KEEP=${LOG_FILES_TO_KEEP:-10}
+
+RESULTS_DIR=${RESULTS_ROOT_DIR}/tmpfs_rotate_on_${MIN_NEW_LOG_SIZE_TO_ROTATE}.var_rotate_on_${MIN_LOG_SIZE_TO_ROTATE}.keep_${LOG_FILES_TO_KEEP}
+STATS=${RESULTS_DIR}/teststats.log.csv
+
+echo "creating ${RESULTS_DIR}..."
+mkdir -p ${RESULTS_DIR} || error "cannot create ${RESULTS_DIR}"
 
 echo "creating ${ROOTFS_IMG}..."
 dd if=/dev/zero of=${ROOTFS_IMG} count=1 bs=${ROOTFS_SIZE} || error "cannot create ${ROOTFS_IMG}"
@@ -140,6 +154,7 @@ LIVE_LOG=$(realpath ${LIVE_LOG}) \
 OLD_LOG=$(realpath ${OLD_LOG}) \
 MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE} \
 MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE} \
+LOG_FILES_TO_KEEP=${LOG_FILES_TO_KEEP} \
     envsubst \
         <${LOGROTATE_TEMPLATE} \
         >${LOGROTATE_CONFIG} \
@@ -158,7 +173,8 @@ for i in {1..1000}; do
 done
 echo
 
-./analyze.py
+cp ${LOGROTATE_CONFIG} ${RESULTS_DIR}
+print_results | tee ${RESULTS_DIR}/summary.txt
 
 cleanup
 

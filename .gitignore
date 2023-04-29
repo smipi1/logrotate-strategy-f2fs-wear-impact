@@ -5,4 +5,4 @@
 # Output
 /rootfs.img
 /rootfs/ 
-/stats.csv
+/results/

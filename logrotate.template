@@ -8,6 +8,6 @@ ${LIVE_LOG} {
 
 ${OLD_LOG} {
     size ${MIN_LOG_SIZE_TO_ROTATE}
-    rotate 10
+    rotate ${LOG_FILES_TO_KEEP}
 }
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
-import csv, math
+import csv, sys
 
 seconds_elapsed = 0.0
 size_logged = 0.0
 sectors_written_min = None
 sectors_written_max = None
 
-with open('stats.csv') as f:
+with open(sys.argv[1]) as f:
     reader = csv.DictReader(f)
     for row in reader:
         seconds_elapsed = max(
@@ -31,6 +31,6 @@ with open('stats.csv') as f:
     log_rate = size_logged / seconds_elapsed
     wear_rate = bytes_written / seconds_elapsed
     savings = (log_rate - wear_rate) / log_rate
-    print(f"log_rate =  {log_rate:6.2f} B/s")
-    print(f"wear_rate = {wear_rate:6.2f} B/s")
-    print(f"savings =   {savings*100.0:6.2f} %")
+    print(f"log_rate:            {log_rate:5.2f} B/s")
+    print(f"wear_rate:           {wear_rate:5.2f} B/s")
+    print(f"savings:             {savings*100.0:5.2f} %")
