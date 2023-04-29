@@ -1,5 +1,5 @@
 ${LIVE_LOG} {
-    size 20K
+    size ${MIN_NEW_LOG_SIZE_TO_ROTATE}
     rotate 1
     postrotate
         lz4 -c ${LIVE_LOG}.1 >>${OLD_LOG}
@@ -7,7 +7,7 @@ ${LIVE_LOG} {
 }
 
 ${OLD_LOG} {
-    size 100K
+    size ${MIN_LOG_SIZE_TO_ROTATE}
     rotate 10
 }
 

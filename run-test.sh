@@ -97,6 +97,10 @@ ETC_DIR=${ROOTFS_MOUNT_POINT}/etc
 LOGROTATE_CONFIG=${ETC_DIR}/logrotate.config
 LOGROTATE_STATE_FILE=${VAR_DIR}/logrotate.state
 
+# Parameterizable via environment
+MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE:-${LOG_FILL_RATE_SIZE_HUMAN}}
+MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE:-100K}
+
 echo "creating ${ROOTFS_IMG}..."
 dd if=/dev/zero of=${ROOTFS_IMG} count=1 bs=${ROOTFS_SIZE} || error "cannot create ${ROOTFS_IMG}"
 
@@ -132,19 +136,30 @@ mkdir -p ${LOG_DIR} || error "cannot create ${LOG_DIR}"
 mkdir -p ${TMP_LOG_DIR} || error "cannot create ${TMP_LOG_DIR}"
 
 echo "configuring logrotate..."
-LIVE_LOG=$(realpath ${LIVE_LOG}) OLD_LOG=$(realpath ${OLD_LOG}) envsubst <${LOGROTATE_TEMPLATE} >${LOGROTATE_CONFIG} || error "cannot configure logrotate"
+LIVE_LOG=$(realpath ${LIVE_LOG}) \
+OLD_LOG=$(realpath ${OLD_LOG}) \
+MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE} \
+MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE} \
+    envsubst \
+        <${LOGROTATE_TEMPLATE} \
+        >${LOGROTATE_CONFIG} \
+    || error "cannot configure logrotate"
 
 SIZE_LOGGED=0
 SECONDS_ELAPSED=0
 print_stats_header
 print_stats
-for i in {{1..1000}}; do
+for i in {1..1000}; do
     let "SECONDS_ELAPSED += ${LOGROTATE_RATE_SECONDS}"
     accrete_log_for_one_rotation
     do_rotation
     print_stats
-    echo ${SECONDS_ELAPSED}: ${TMP_LOG_DIR}/* ${LOG_DIR}/*
+    printf "running test: $((${i} * 100 / 1000)) %% complete\r"
 done
+echo
+
+./analyze.py
 
 cleanup
+
 
