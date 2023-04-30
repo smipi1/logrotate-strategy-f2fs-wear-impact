@@ -33,20 +33,13 @@ error() {
     exit 1
 }
 
-log() {
-    let "SEQ_NR += 1"
-    printf "%010d: %s\n" ${SEQ_NR} "$*"
-}
-
-accrete_log_for_one_rotation() {
+grow_syslog() {
     touch ${LIVE_LOG}
+    local MESSAGE_COUNT="$(( (${LOG_ACCRETION_PER_ROTATION} + ${BYTES_PER_MESSAGE} - 1 ) / ${BYTES_PER_MESSAGE} ))"
     local CURRENT_SIZE="$(stat --printf='%s' ${LIVE_LOG})"
-    local MIN_NEW_SIZE="$((${CURRENT_SIZE} + ${LOG_ACCRETION_PER_ROTATION}))"
-    while [ "$(stat --printf='%s' ${LIVE_LOG})" -lt "${MIN_NEW_SIZE}" ]; do
-        log "one representative syslog message accreted to the log" >> ${LIVE_LOG}
-    done
-    local NEW_SIZE="$(stat --printf='%s' ${LIVE_LOG})"
-    let "SIZE_LOGGED+=${NEW_SIZE}-${CURRENT_SIZE}"
+    ${GENERATE_LOG_MESSAGES} -v start_seq=${SEQ_NR} -v message_count=${MESSAGE_COUNT} >> ${LIVE_LOG}
+    let "SEQ_NR += ${MESSAGE_COUNT}"
+    let "SIZE_LOGGED+=${MESSAGE_COUNT}*${BYTES_PER_MESSAGE}"
 }
 
 do_rotation() {
@@ -103,9 +96,11 @@ LOGROTATE_TEMPLATE=logrotate.template
 ETC_DIR=${ROOTFS_MOUNT_POINT}/etc
 LOGROTATE_CONFIG=${ETC_DIR}/logrotate.config
 LOGROTATE_STATE_FILE=${VAR_DIR}/logrotate.state
+GENERATE_LOG_MESSAGES=./generate-64-byte-syslog-messages.awk
+BYTES_PER_MESSAGE=$(${GENERATE_LOG_MESSAGES} | wc -c)
 
 # Parameterizable via environment
-MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE:-${LOG_FILL_RATE_SIZE_HUMAN}}
+MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE:-1} # 1B size increase effectively means rotate always
 MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE:-100K}
 LOG_FILES_TO_KEEP=${LOG_FILES_TO_KEEP:-10}
 
@@ -166,13 +161,15 @@ print_stats_header
 print_stats
 for i in {1..1000}; do
     let "SECONDS_ELAPSED += ${LOGROTATE_RATE_SECONDS}"
-    accrete_log_for_one_rotation
+    grow_syslog
     do_rotation
     print_stats
     printf "running test: $((${i} * 100 / 1000)) %% complete\r"
+    [ -n "${SLEEP_PER_CYCLE}" ] && sleep ${SLEEP_PER_CYCLE}
 done
 echo
 
+echo "adding results to ${RESULTS_DIR} ..."
 cp ${LOGROTATE_CONFIG} ${RESULTS_DIR}
 print_results | tee ${RESULTS_DIR}/summary.txt
 
