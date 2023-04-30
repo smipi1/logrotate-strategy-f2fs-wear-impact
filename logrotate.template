@@ -2,11 +2,11 @@ ${LIVE_LOG} {
     size ${MIN_NEW_LOG_SIZE_TO_ROTATE}
     rotate 1
     postrotate
-        ${COMPRESS} ${COMPRESS_OPTS} -c ${LIVE_LOG}.1 >>${OLD_LOG}
+        ${COMPRESS} ${COMPRESS_OPTS} -c ${LIVE_LOG}.1 >>${KEEP_LOG}
     endscript
 }
 
-${OLD_LOG} {
+${KEEP_LOG} {
     size ${MIN_LOG_SIZE_TO_ROTATE}
     rotate ${LOG_FILES_TO_KEEP}
 }

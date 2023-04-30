@@ -70,6 +70,9 @@ print_results() {
     echo "RAM log rotates on:  ${MIN_NEW_LOG_SIZE_TO_ROTATE}B"
     echo "eMMC log rotates on: ${MIN_LOG_SIZE_TO_ROTATE}B"
     echo "Log files to keep:   ${LOG_FILES_TO_KEEP}"
+    echo "logrotate call rate: ${LOGROTATE_RATE_SECONDS} s"
+    echo "compression used:    ${COMPRESS} ${COMPRESS_OPTS}"
+    echo "compression rate:    ${COMPRESSION_RATE} %"
     ./analyze.py ${STATS}
 }
 
@@ -83,7 +86,7 @@ TMP_LOG_DIR=${TMPFS_MOUNT_POINT}/log
 VAR_DIR=${ROOTFS_MOUNT_POINT}/var
 LOG_DIR=${VAR_DIR}/log
 LIVE_LOG=${TMP_LOG_DIR}/messages
-OLD_LOG=${LOG_DIR}/messages.lz4
+KEEP_LOG=${LOG_DIR}/messages.lz4
 LOG_FILL_RATE_SIZE_HUMAN=20K
 LOG_FILL_RATE_SIZE=$(numfmt --from=iec ${LOG_FILL_RATE_SIZE_HUMAN})
 LOG_FILL_RATE_MINUTES=5
@@ -103,17 +106,19 @@ BYTES_PER_MESSAGE=$(${GENERATE_LOG_MESSAGES} | wc -c)
 MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE:-1} # 1B size increase effectively means rotate always
 MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE:-100K}
 LOG_FILES_TO_KEEP=${LOG_FILES_TO_KEEP:-10}
+TEST_KEEP_ROTATION_COUNT=1
 COMPRESS=${COMPRESS:-lz4}
 COMPRESS_OPTS=${COMPRESS_OPTS:--1}
 
-RESULTS_DIR=${RESULTS_ROOT_DIR}/tmpfs_rotate_${LOGROTATE_RATE_SECONDS}.compress_${COMPRESS}${COMPRESS_OPTS//-/_}.var_rotate_${MIN_LOG_SIZE_TO_ROTATE}.keep_${LOG_FILES_TO_KEEP}
+FULL_KEEP_ROTATION_SIZE=$(( (${LOG_FILES_TO_KEEP} + 1) * $( numfmt --from=iec ${MIN_LOG_SIZE_TO_ROTATE} ) ))
+RESULTS_DIR=${RESULTS_ROOT_DIR}/ram_rotate_every_${LOGROTATE_RATE_SECONDS}s.compress_${COMPRESS}${COMPRESS_OPTS//-/_}.var_rotate_every_${MIN_LOG_SIZE_TO_ROTATE}B.keep_${LOG_FILES_TO_KEEP}
 STATS=${RESULTS_DIR}/teststats.log.csv
 
 echo "creating ${RESULTS_DIR}..."
 mkdir -p ${RESULTS_DIR} || error "cannot create ${RESULTS_DIR}"
 
 echo "creating ${ROOTFS_IMG}..."
-dd if=/dev/zero of=${ROOTFS_IMG} count=1 bs=${ROOTFS_SIZE} || error "cannot create ${ROOTFS_IMG}"
+dd if=/dev/zero of=${ROOTFS_IMG} count=1 bs=${ROOTFS_SIZE} status=none || error "cannot create ${ROOTFS_IMG}"
 
 echo -n "finding free loop device... "
 LOOP_DEVICE="$(sudo losetup -f)"
@@ -126,7 +131,7 @@ sudo losetup ${LOOP_DEVICE} ${ROOTFS_IMG} || error "cannot attach loop device"
 insert CLEANUPS "sudo losetup -d ${LOOP_DEVICE}"
 
 echo "create an F2FS file system image in ${LOOP_DEVICE}..."
-sudo mkfs.f2fs -f ${LOOP_DEVICE} || error "cannot create F2FS image"
+sudo mkfs.f2fs -q -f ${LOOP_DEVICE} || error "cannot create F2FS image"
 
 echo "mount F2FS file system at ${ROOTFS_MOUNT_POINT}..."
 sudo mount ${LOOP_DEVICE} -o loop ${ROOTFS_MOUNT_POINT} || error "cannot mount ${LOOP_DEVICE} at ${ROOTFS_MOUNT_POINT}"
@@ -148,7 +153,7 @@ mkdir -p ${TMP_LOG_DIR} || error "cannot create ${TMP_LOG_DIR}"
 
 echo "configuring logrotate..."
 LIVE_LOG=$(realpath ${LIVE_LOG}) \
-OLD_LOG=$(realpath ${OLD_LOG}) \
+KEEP_LOG=$(realpath ${KEEP_LOG}) \
 MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE} \
 MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE} \
 LOG_FILES_TO_KEEP=${LOG_FILES_TO_KEEP} \
@@ -163,13 +168,20 @@ SIZE_LOGGED=0
 SECONDS_ELAPSED=0
 print_stats_header
 print_stats
-for i in {1..1000}; do
+i=0
+while [ -z "${ROTATIONS_PER_FULL_TEST}" ] || [ "${i}" -lt "${ROTATIONS_PER_FULL_TEST}" ]; do
     let "SECONDS_ELAPSED += ${LOGROTATE_RATE_SECONDS}"
     grow_syslog
     do_rotation
+    if [ -z "${ROTATIONS_PER_FULL_TEST}" ]; then
+        COMPRESSED_ROTATION_SIZE=$(${COMPRESS} ${COMPRESS_OPT} -c ${LIVE_LOG}.1 | wc -c)
+        let "ROTATIONS_PER_FULL_TEST = ${FULL_KEEP_ROTATION_SIZE} / ${COMPRESSED_ROTATION_SIZE}"
+        let "COMPRESSION_RATE = ( ${SIZE_LOGGED} - ${COMPRESSED_ROTATION_SIZE} ) * 100 / ${SIZE_LOGGED}"
+    fi
     print_stats
-    printf "running test: $((${i} * 100 / 1000)) %% complete\r"
+    printf "running test: $((${i} * 100 / ${ROTATIONS_PER_FULL_TEST})) %% complete\r"
     [ -n "${SLEEP_PER_CYCLE}" ] && sleep ${SLEEP_PER_CYCLE}
+    let "i++"
 done
 echo
 
