@@ -3,6 +3,14 @@
 set -o pipefail
 trap cleanup INT
 
+# Parameterizable variable (via environment)
+MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE:-1} # 1B size increase effectively means rotate always
+MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE:-100K}
+LOG_FILES_TO_KEEP=${LOG_FILES_TO_KEEP:-10}
+TEST_KEEP_ROTATION_COUNT=1
+COMPRESS=${COMPRESS:-lz4}
+COMPRESS_OPTS=${COMPRESS_OPTS:--1}
+
 insert() {
     local -n ARRAY=$1; shift
     ARRAY=("$@" "${ARRAY[@]}")
@@ -101,14 +109,6 @@ LOGROTATE_CONFIG=${ETC_DIR}/logrotate.config
 LOGROTATE_STATE_FILE=${VAR_DIR}/logrotate.state
 GENERATE_LOG_MESSAGES=./generate-64-byte-syslog-messages.awk
 BYTES_PER_MESSAGE=$(${GENERATE_LOG_MESSAGES} | wc -c)
-
-# Parameterizable via environment
-MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE:-1} # 1B size increase effectively means rotate always
-MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE:-100K}
-LOG_FILES_TO_KEEP=${LOG_FILES_TO_KEEP:-10}
-TEST_KEEP_ROTATION_COUNT=1
-COMPRESS=${COMPRESS:-lz4}
-COMPRESS_OPTS=${COMPRESS_OPTS:--1}
 
 FULL_KEEP_ROTATION_SIZE=$(( (${LOG_FILES_TO_KEEP} + 1) * $( numfmt --from=iec ${MIN_LOG_SIZE_TO_ROTATE} ) ))
 RESULTS_DIR=${RESULTS_ROOT_DIR}/ram_rotate_every_${LOGROTATE_RATE_SECONDS}s.compress_${COMPRESS}${COMPRESS_OPTS//-/_}.var_rotate_every_${MIN_LOG_SIZE_TO_ROTATE}B.keep_${LOG_FILES_TO_KEEP}
