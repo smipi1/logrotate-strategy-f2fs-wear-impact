@@ -7,7 +7,7 @@ trap cleanup INT
 MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE:-1} # 1B size increase effectively means rotate always
 MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE:-100K}
 LOG_FILES_TO_KEEP=${LOG_FILES_TO_KEEP:-10}
-TEST_KEEP_ROTATION_COUNT=1
+TEST_KEEP_ROTATION_COUNT=${TEST_KEEP_ROTATION_COUNT:-1}
 COMPRESS=${COMPRESS:-lz4}
 COMPRESS_OPTS=${COMPRESS_OPTS:--1}
 
@@ -81,6 +81,7 @@ print_results() {
     echo "logrotate call rate: ${LOGROTATE_RATE_SECONDS} s"
     echo "compression used:    ${COMPRESS} ${COMPRESS_OPTS}"
     echo "compression rate:    ${COMPRESSION_RATE} %"
+    echo "total rotations:     ${TEST_KEEP_ROTATION_COUNT}"
     ./analyze.py ${STATS}
 }
 
@@ -111,7 +112,7 @@ GENERATE_LOG_MESSAGES=./generate-64-byte-syslog-messages.awk
 BYTES_PER_MESSAGE=$(${GENERATE_LOG_MESSAGES} | wc -c)
 
 FULL_KEEP_ROTATION_SIZE=$(( (${LOG_FILES_TO_KEEP} + 1) * $( numfmt --from=iec ${MIN_LOG_SIZE_TO_ROTATE} ) ))
-RESULTS_DIR=${RESULTS_ROOT_DIR}/ram_rotate_every_${LOGROTATE_RATE_SECONDS}s.compress_${COMPRESS}${COMPRESS_OPTS//-/_}.var_rotate_every_${MIN_LOG_SIZE_TO_ROTATE}B.keep_${LOG_FILES_TO_KEEP}
+RESULTS_DIR=${RESULTS_ROOT_DIR}/ram_rotate_every_${LOGROTATE_RATE_SECONDS}s.compress_${COMPRESS}${COMPRESS_OPTS//-/_}.var_rotate_every_${MIN_LOG_SIZE_TO_ROTATE}B.keep_${LOG_FILES_TO_KEEP}.${TEST_KEEP_ROTATION_COUNT}_rotations
 STATS=${RESULTS_DIR}/teststats.log.csv
 
 echo "creating ${RESULTS_DIR}..."
@@ -175,7 +176,7 @@ while [ -z "${ROTATIONS_PER_FULL_TEST}" ] || [ "${i}" -lt "${ROTATIONS_PER_FULL_
     do_rotation
     if [ -z "${ROTATIONS_PER_FULL_TEST}" ]; then
         COMPRESSED_ROTATION_SIZE=$(${COMPRESS} ${COMPRESS_OPT} -c ${LIVE_LOG}.1 | wc -c)
-        let "ROTATIONS_PER_FULL_TEST = ${FULL_KEEP_ROTATION_SIZE} / ${COMPRESSED_ROTATION_SIZE}"
+        let "ROTATIONS_PER_FULL_TEST = ${TEST_KEEP_ROTATION_COUNT} * ${FULL_KEEP_ROTATION_SIZE} / ${COMPRESSED_ROTATION_SIZE}"
         let "COMPRESSION_RATE = ( ${SIZE_LOGGED} - ${COMPRESSED_ROTATION_SIZE} ) * 100 / ${SIZE_LOGGED}"
     fi
     print_stats
