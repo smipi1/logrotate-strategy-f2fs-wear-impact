@@ -74,6 +74,33 @@ print_stats() {
     ) | space_separated_to_csv >>${STATS}
 }
 
+decompress_kept_logs() {
+    (cd ${LOG_DIR} && ls -1vr | xargs cat | ${COMPRESS} -dc - -)
+}
+
+has_complete_sequence() {
+    awk -F ':' '
+        BEGIN {
+            message_count = 0
+        }
+        // {
+            seq_nr = int($1);
+            message_count++;
+            if(length(prev_seq_nr) == 0) {
+                # skip the first record
+            } else {
+                delta = seq_nr - prev_seq_nr;
+                if(delta != 1) {
+                    # jump in sequence
+                    printf("error: sequence incorrect at message %d: expected delta=1, but got delta=%d\n", message_count, delta);
+                    exit 1
+                }
+            }
+            prev_seq_nr = seq_nr
+        }
+    '
+}
+
 print_results() {
     echo "RAM log rotates on:  ${MIN_NEW_LOG_SIZE_TO_ROTATE}B"
     echo "eMMC log rotates on: ${MIN_LOG_SIZE_TO_ROTATE}B"
@@ -82,6 +109,7 @@ print_results() {
     echo "compression used:    ${COMPRESS} ${COMPRESS_OPTS}"
     echo "compression rate:    ${COMPRESSION_RATE} %"
     echo "total rotations:     ${TEST_KEEP_ROTATION_COUNT}"
+    echo "all messages kept:   ${KEPT_LOG_SEQUENCE_COMPLETE}"
     ./analyze.py ${STATS}
 }
 
@@ -185,6 +213,14 @@ while [ -z "${ROTATIONS_PER_FULL_TEST}" ] || [ "${i}" -lt "${ROTATIONS_PER_FULL_
     let "i++"
 done
 echo
+
+
+echo "testing for complete compressed log sequence in ${LOG_DIR} ..."
+if decompress_kept_logs | has_complete_sequence; then
+    KEPT_LOG_SEQUENCE_COMPLETE="yes"
+else
+    KEPT_LOG_SEQUENCE_COMPLETE="no"
+fi
 
 echo "adding results to ${RESULTS_DIR} ..."
 cp ${LOGROTATE_CONFIG} ${RESULTS_DIR}
