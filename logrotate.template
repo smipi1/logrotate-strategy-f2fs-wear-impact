@@ -2,6 +2,7 @@ ${LIVE_LOG} {
     size ${MIN_NEW_LOG_SIZE_TO_ROTATE}
     rotate 1
     postrotate
+        # /usr/bin/killall -HUP syslogd
         ${COMPRESS} ${COMPRESS_OPTS} -c ${LIVE_LOG}.1 >>${KEEP_LOG}
     endscript
 }
