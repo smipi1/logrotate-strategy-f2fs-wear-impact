@@ -10,5 +10,6 @@ ${LIVE_LOG} {
 ${KEEP_LOG} {
     size ${MIN_LOG_SIZE_TO_ROTATE}
     rotate ${LOG_FILES_TO_KEEP}
+    ${ADD_LOGROTATE_DIRECTIVE}
 }
 
