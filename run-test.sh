@@ -114,7 +114,7 @@ print_results() {
     echo    "compression rate:    ${COMPRESSION_RATE} %"
     echo -n "sync on compression: "; [ -n "${SYNC_ON_COMPRESS}" ] && echo "yes" || echo "no"
     echo -n "sync on rotation:    "; [ -n "${SYNC_ON_ROTATE}" ] && echo "yes" || echo "no"
-    echo -n "extra directives:    ${ADD_LOGROTATE_DIRECTIVE:--}"
+    echo    "extra directives:    ${ADD_LOGROTATE_DIRECTIVE:--}"
     echo    "total rotations:     ${ROTATION_COUNT}"
     echo    "all messages kept:   ${KEPT_LOG_SEQUENCE_COMPLETE}"
     ./analyze.py ${STATS}
