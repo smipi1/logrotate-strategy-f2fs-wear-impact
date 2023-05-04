@@ -114,6 +114,7 @@ print_results() {
     echo    "compression rate:    ${COMPRESSION_RATE} %"
     echo -n "sync on compression: "; [ -n "${SYNC_ON_COMPRESS}" ] && echo "yes" || echo "no"
     echo -n "sync on rotation:    "; [ -n "${SYNC_ON_ROTATE}" ] && echo "yes" || echo "no"
+    echo -n "extra directives:    ${ADD_LOGROTATE_DIRECTIVE:--}"
     echo    "total rotations:     ${ROTATION_COUNT}"
     echo    "all messages kept:   ${KEPT_LOG_SEQUENCE_COMPLETE}"
     ./analyze.py ${STATS}
@@ -145,7 +146,7 @@ LOGROTATE_STATE_FILE=${VAR_DIR}/logrotate.state
 GENERATE_LOG_MESSAGES=./generate-64-byte-syslog-messages.awk
 BYTES_PER_MESSAGE=$(${GENERATE_LOG_MESSAGES} | wc -c)
 FULL_KEEP_ROTATION_SIZE=$(( (${LOG_FILES_TO_KEEP} + 1) * $( numfmt --from=iec ${MIN_LOG_SIZE_TO_ROTATE} ) ))
-RESULTS_DIR=${RESULTS_ROOT_DIR}/ram_rotate_every_${LOGROTATE_RATE_SECONDS}s.compress_${COMPRESS}${COMPRESS_OPTS//-/_}.var_rotate_every_${MIN_LOG_SIZE_TO_ROTATE}B.keep_${LOG_FILES_TO_KEEP}.${ROTATION_COUNT}_rotations${ADD_LOGROTATE_DIRECTIVE:+.${ADD_LOGROTATE_DIRECTIVE}}${SYNC_ON_COMPRESS:+.sync_on_compress}${SYNC_ON_ROTATE:+.sync_on_rotate}
+RESULTS_DIR=${RESULTS_ROOT_DIR}/every_${LOGROTATE_RATE_SECONDS}s_${MIN_NEW_LOG_SIZE_TO_ROTATE}B.compress_${COMPRESS}${COMPRESS_OPTS//-/_}${SYNC_ON_COMPRESS:++sync}.keep_${MIN_LOG_SIZE_TO_ROTATE}x${LOG_FILES_TO_KEEP}${ADD_LOGROTATE_DIRECTIVE:++${ADD_LOGROTATE_DIRECTIVE}}${SYNC_ON_ROTATE:++sync}.x${ROTATION_COUNT}
 STATS=${RESULTS_DIR}/teststats.log.csv
 
 echo "creating ${RESULTS_DIR}..."
