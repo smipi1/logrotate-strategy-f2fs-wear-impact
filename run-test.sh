@@ -4,6 +4,7 @@ set -o pipefail
 trap cleanup INT
 
 # Parameterizable variable (via environment)
+MAX_LOG_LOSS_MINUTES=${MAX_LOG_LOSS_MINUTES:-5}             # Maximum acceptable log loss in seconds
 MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE:-1} # Size threshold in tmpfs to rotate
                                                             # 1B effectively means always rotate
 MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE:-1M}        # Size threshold in f2fs to rotate
@@ -106,17 +107,17 @@ has_complete_sequence() {
 }
 
 print_results() {
-    echo    "RAM log rotates on:  ${MIN_NEW_LOG_SIZE_TO_ROTATE}B"
-    echo    "eMMC log rotates on: ${MIN_LOG_SIZE_TO_ROTATE}B"
-    echo    "Log files to keep:   ${LOG_FILES_TO_KEEP}"
-    echo    "logrotate call rate: ${LOGROTATE_RATE_SECONDS} s"
-    echo    "compression used:    ${COMPRESS} ${COMPRESS_OPTS}"
-    echo    "compression rate:    ${COMPRESSION_RATE} %"
-    echo -n "sync on compression: "; [ -n "${SYNC_ON_COMPRESS}" ] && echo "yes" || echo "no"
-    echo -n "sync on rotation:    "; [ -n "${SYNC_ON_ROTATE}" ] && echo "yes" || echo "no"
-    echo    "extra directives:    ${ADD_LOGROTATE_DIRECTIVE:--}"
-    echo    "total rotations:     ${ROTATION_COUNT}"
-    echo    "all messages kept:   ${KEPT_LOG_SEQUENCE_COMPLETE}"
+    echo    "compress threshold:        ${MIN_NEW_LOG_SIZE_TO_ROTATE}B"
+    echo    "compress every:            ${LOGROTATE_RATE_SECONDS}s"
+    echo    "rotation threshold:        ${MIN_LOG_SIZE_TO_ROTATE}B"
+    echo    "rotation files to keep:    ${LOG_FILES_TO_KEEP}"
+    echo    "compression used:          ${COMPRESS} ${COMPRESS_OPTS}"
+    echo    "compression rate:          ${COMPRESSION_RATE} %"
+    echo -n "sync on compression:       "; [ -n "${SYNC_ON_COMPRESS}" ] && echo "yes" || echo "no"
+    echo -n "sync on rotation:          "; [ -n "${SYNC_ON_ROTATE}" ] && echo "yes" || echo "no"
+    echo    "extra directives:          ${ADD_LOGROTATE_DIRECTIVE:--}"
+    echo    "total rotations:           ${ROTATION_COUNT}"
+    echo    "all messages kept:         ${KEPT_LOG_SEQUENCE_COMPLETE}"
     ./analyze.py ${STATS}
 }
 
@@ -135,9 +136,7 @@ LOG_FILL_RATE_SIZE_HUMAN=20K
 LOG_FILL_RATE_SIZE=$(numfmt --from=iec ${LOG_FILL_RATE_SIZE_HUMAN})
 LOG_FILL_RATE_MINUTES=5
 LOG_FILL_RATE_SECONDS=$((${LOG_FILL_RATE_MINUTES}*60))
-ACCEPTABLE_LOG_LOSS_MINUTES=5
-ACCEPTABLE_LOG_LOSS_SECONDS=$((${ACCEPTABLE_LOG_LOSS_MINUTES}*60))
-LOGROTATE_RATE_SECONDS=${ACCEPTABLE_LOG_LOSS_SECONDS}
+LOGROTATE_RATE_SECONDS=$((${MAX_LOG_LOSS_MINUTES}*60))
 LOG_ACCRETION_PER_ROTATION=$((${LOG_FILL_RATE_SIZE}*${LOGROTATE_RATE_SECONDS}/${LOG_FILL_RATE_SECONDS}))
 LOGROTATE_TEMPLATE=logrotate.template
 ETC_DIR=${ROOTFS_MOUNT_POINT}/etc
