@@ -4,15 +4,16 @@ set -o pipefail
 trap cleanup INT
 
 # Parameterizable variable (via environment)
-MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE:-1} # 1B size increase effectively means rotate always
-MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE:-1M}
-LOG_FILES_TO_KEEP=${LOG_FILES_TO_KEEP:-26}
-TEST_KEEP_ROTATION_COUNT=${TEST_KEEP_ROTATION_COUNT:-1}
-COMPRESS=${COMPRESS:-lz4}
-COMPRESS_OPTS=${COMPRESS_OPTS:--3}
-ADD_LOGROTATE_DIRECTIVE=${ADD_LOGROTATE_DIRECTIVE:-}
-SYNC_ON_RUN_ROTATE=${SYNC_ON_RUN_ROTATE:-}
-SYNC_ON_VAR_ROTATE=${SYNC_ON_VAR_ROTATE:-}
+MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE:-1} # Size threshold in tmpfs to rotate
+                                                            # 1B effectively means always rotate
+MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE:-1M}        # Size threshold in f2fs to rotate
+LOG_FILES_TO_KEEP=${LOG_FILES_TO_KEEP:-26}                  # Number of log files to maintain in f2fs
+ROTATION_COUNT=${ROTATION_COUNT:-1}                         # Number of full f2fs rotations to test with
+COMPRESS=${COMPRESS:-lz4}                                   # Compression app to use
+COMPRESS_OPTS=${COMPRESS_OPTS:--3}                          # Compression options to pass to compression app
+ADD_LOGROTATE_DIRECTIVE=${ADD_LOGROTATE_DIRECTIVE:-}        # Optional additional directive on f2fs rotation
+SYNC_ON_COMPRESS=${SYNC_ON_COMPRESS:-}                      # Optionally sync on every compress and append
+SYNC_ON_ROTATE=${SYNC_ON_ROTATE:-}                          # Optionally sync on every f2fs rotation
 
 insert() {
     local -n ARRAY=$1; shift
@@ -105,14 +106,16 @@ has_complete_sequence() {
 }
 
 print_results() {
-    echo "RAM log rotates on:  ${MIN_NEW_LOG_SIZE_TO_ROTATE}B"
-    echo "eMMC log rotates on: ${MIN_LOG_SIZE_TO_ROTATE}B"
-    echo "Log files to keep:   ${LOG_FILES_TO_KEEP}"
-    echo "logrotate call rate: ${LOGROTATE_RATE_SECONDS} s"
-    echo "compression used:    ${COMPRESS} ${COMPRESS_OPTS}"
-    echo "compression rate:    ${COMPRESSION_RATE} %"
-    echo "total rotations:     ${TEST_KEEP_ROTATION_COUNT}"
-    echo "all messages kept:   ${KEPT_LOG_SEQUENCE_COMPLETE}"
+    echo    "RAM log rotates on:  ${MIN_NEW_LOG_SIZE_TO_ROTATE}B"
+    echo    "eMMC log rotates on: ${MIN_LOG_SIZE_TO_ROTATE}B"
+    echo    "Log files to keep:   ${LOG_FILES_TO_KEEP}"
+    echo    "logrotate call rate: ${LOGROTATE_RATE_SECONDS} s"
+    echo    "compression used:    ${COMPRESS} ${COMPRESS_OPTS}"
+    echo    "compression rate:    ${COMPRESSION_RATE} %"
+    echo -n "sync on compression: "; [ -n "${SYNC_ON_COMPRESS}" ] && echo "yes" || echo "no"
+    echo -n "sync on rotation:    "; [ -n "${SYNC_ON_ROTATE}" ] && echo "yes" || echo "no"
+    echo    "total rotations:     ${ROTATION_COUNT}"
+    echo    "all messages kept:   ${KEPT_LOG_SEQUENCE_COMPLETE}"
     ./analyze.py ${STATS}
 }
 
@@ -142,10 +145,8 @@ LOGROTATE_STATE_FILE=${VAR_DIR}/logrotate.state
 GENERATE_LOG_MESSAGES=./generate-64-byte-syslog-messages.awk
 BYTES_PER_MESSAGE=$(${GENERATE_LOG_MESSAGES} | wc -c)
 FULL_KEEP_ROTATION_SIZE=$(( (${LOG_FILES_TO_KEEP} + 1) * $( numfmt --from=iec ${MIN_LOG_SIZE_TO_ROTATE} ) ))
-RESULTS_DIR=${RESULTS_ROOT_DIR}/ram_rotate_every_${LOGROTATE_RATE_SECONDS}s.compress_${COMPRESS}${COMPRESS_OPTS//-/_}.var_rotate_every_${MIN_LOG_SIZE_TO_ROTATE}B.keep_${LOG_FILES_TO_KEEP}.${TEST_KEEP_ROTATION_COUNT}_rotations${ADD_LOGROTATE_DIRECTIVE:+.${ADD_LOGROTATE_DIRECTIVE}}${SYNC_ON_RUN_ROTATE:+.sync_on_run_rotate}${SYNC_ON_VAR_ROTATE:+.sync_on_var_rotate}
+RESULTS_DIR=${RESULTS_ROOT_DIR}/ram_rotate_every_${LOGROTATE_RATE_SECONDS}s.compress_${COMPRESS}${COMPRESS_OPTS//-/_}.var_rotate_every_${MIN_LOG_SIZE_TO_ROTATE}B.keep_${LOG_FILES_TO_KEEP}.${ROTATION_COUNT}_rotations${ADD_LOGROTATE_DIRECTIVE:+.${ADD_LOGROTATE_DIRECTIVE}}${SYNC_ON_COMPRESS:+.sync_on_compress}${SYNC_ON_ROTATE:+.sync_on_rotate}
 STATS=${RESULTS_DIR}/teststats.log.csv
-[ -n "${SYNC_ON_RUN_ROTATE}" ] && SYNC_KEEP_LOG="sync -d ${KEEP_LOG}"
-[ -n "${SYNC_ON_VAR_ROTATE}" ] && SYNC_ROTATED_KEEP_LOGS="sync -d ${KEEP_LOG}.*"
 
 echo "creating ${RESULTS_DIR}..."
 mkdir -p ${RESULTS_DIR} || error "cannot create ${RESULTS_DIR}"
@@ -193,8 +194,8 @@ LOG_FILES_TO_KEEP=${LOG_FILES_TO_KEEP} \
 COMPRESS=${COMPRESS} \
 COMPRESS_OPTS=${COMPRESS_OPTS} \
 ADD_LOGROTATE_DIRECTIVE=${ADD_LOGROTATE_DIRECTIVE} \
-SYNC_KEEP_LOG=${SYNC_KEEP_LOG} \
-SYNC_ROTATED_KEEP_LOGS=${SYNC_ROTATED_KEEP_LOGS} \
+SYNC_ON_COMPRESS_CMD="${SYNC_ON_COMPRESS:+sync -d ${KEEP_LOG}}" \
+SYNC_ON_ROTATE_CMD="${SYNC_ON_ROTATE:+sync -d ${KEEP_LOG}.*}" \
     envsubst \
         <${LOGROTATE_TEMPLATE} \
         >${LOGROTATE_CONFIG} \
@@ -204,17 +205,17 @@ SECONDS_ELAPSED=0
 print_stats_header
 print_stats
 i=0
-while [ -z "${ROTATIONS_PER_FULL_TEST}" ] || [ "${i}" -lt "${ROTATIONS_PER_FULL_TEST}" ]; do
+while [ -z "${COMPRESS_COUNT}" ] || [ "${i}" -lt "${COMPRESS_COUNT}" ]; do
     let "SECONDS_ELAPSED += ${LOGROTATE_RATE_SECONDS}"
     grow_syslog
     do_rotation
-    if [ -z "${ROTATIONS_PER_FULL_TEST}" ]; then
+    if [ -z "${COMPRESS_COUNT}" ]; then
         COMPRESSED_ROTATION_SIZE=$(${COMPRESS} ${COMPRESS_OPT} -c ${LIVE_LOG}.1 | wc -c)
-        let "ROTATIONS_PER_FULL_TEST = ${TEST_KEEP_ROTATION_COUNT} * ${FULL_KEEP_ROTATION_SIZE} / ${COMPRESSED_ROTATION_SIZE}"
+        let "COMPRESS_COUNT = ${ROTATION_COUNT} * ${FULL_KEEP_ROTATION_SIZE} / ${COMPRESSED_ROTATION_SIZE}"
         let "COMPRESSION_RATE = ( ${SIZE_LOGGED} - ${COMPRESSED_ROTATION_SIZE} ) * 100 / ${SIZE_LOGGED}"
     fi
     print_stats
-    printf "running test: $((${i} * 100 / ${ROTATIONS_PER_FULL_TEST})) %% complete\r"
+    printf "running test: $((${i} * 100 / ${COMPRESS_COUNT})) %% complete\r"
     [ -n "${SLEEP_PER_CYCLE}" ] && sleep ${SLEEP_PER_CYCLE}
     let "i++"
 done

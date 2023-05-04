@@ -4,7 +4,7 @@ ${LIVE_LOG} {
     postrotate
         # /usr/bin/killall -HUP syslogd
         ${COMPRESS} ${COMPRESS_OPTS} -c ${LIVE_LOG}.1 >>${KEEP_LOG}
-        ${SYNC_KEEP_LOG}
+        ${SYNC_ON_COMPRESS_CMD}
     endscript
 }
 
@@ -13,7 +13,7 @@ ${KEEP_LOG} {
     rotate ${LOG_FILES_TO_KEEP}
     ${ADD_LOGROTATE_DIRECTIVE}
     postrotate
-        ${SYNC_ROTATED_KEEP_LOGS}
+        ${SYNC_ON_ROTATE_CMD}
     endscript
 }
 
