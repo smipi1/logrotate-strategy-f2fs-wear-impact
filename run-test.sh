@@ -15,6 +15,7 @@ COMPRESS_OPTS=${COMPRESS_OPTS:--3}                          # Compression option
 ADD_LOGROTATE_DIRECTIVE=${ADD_LOGROTATE_DIRECTIVE:-}        # Optional additional directive on f2fs rotation
 NO_SYNC_ON_COMPRESS=${NO_SYNC_ON_COMPRESS:-}                # Optionally disable sync on every compress and append
 NO_SYNC_ON_ROTATE=${NO_SYNC_ON_ROTATE:-}                    # Optionally disable sync on every f2fs rotation
+KEEP_LOGFILES_WITH_RESULT=${KEEP_LOGFILES_WITH_RESULT:-}    # Optionally keep a copy of the compressed logfiles
 
 insert() {
     local -n ARRAY=$1; shift
@@ -237,6 +238,8 @@ fi
 echo "adding results to ${RESULTS_DIR} ..."
 cp ${LOGROTATE_CONFIG} ${RESULTS_DIR}
 print_results | tee ${RESULTS_DIR}/summary.txt
+
+[ -n "${KEEP_LOGFILES_WITH_RESULT}" ] && cp -a ${KEEP_LOG}* ${RESULTS_DIR}
 
 cleanup
 
