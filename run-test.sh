@@ -117,6 +117,7 @@ print_results() {
     echo -n "sync on rotation:          "; [ -n "${SYNC_ON_ROTATE}" ] && echo "yes" || echo "no"
     echo    "extra directives:          ${ADD_LOGROTATE_DIRECTIVE:--}"
     echo    "total rotations:           ${ROTATION_COUNT}"
+    echo    "test duration:             $((${END_TIME}-${START_TIME}))s"
     echo    "all messages kept:         ${KEPT_LOG_SEQUENCE_COMPLETE}"
     ./analyze.py ${STATS}
 }
@@ -205,6 +206,7 @@ SECONDS_ELAPSED=0
 print_stats_header
 print_stats
 i=0
+START_TIME=$(date +%s)
 while [ -z "${COMPRESS_COUNT}" ] || [ "${i}" -lt "${COMPRESS_COUNT}" ]; do
     let "SECONDS_ELAPSED += ${LOGROTATE_RATE_SECONDS}"
     grow_syslog
@@ -220,7 +222,7 @@ while [ -z "${COMPRESS_COUNT}" ] || [ "${i}" -lt "${COMPRESS_COUNT}" ]; do
     let "i++"
 done
 echo
-
+END_TIME=$(date +%s)
 
 echo "testing for complete compressed log sequence in ${LOG_DIR} ..."
 if decompress_kept_logs | has_complete_sequence; then
