@@ -31,6 +31,6 @@ with open(sys.argv[1]) as f:
     log_rate = size_logged / seconds_elapsed
     wear_rate = bytes_written / seconds_elapsed
     savings = (log_rate - wear_rate) / log_rate
-    print(f"log_rate:            {log_rate:5.2f} B/s")
-    print(f"wear_rate:           {wear_rate:5.2f} B/s")
-    print(f"savings:             {savings*100.0:5.2f} %")
+    print(f"log_rate:                  {log_rate:5.2f} B/s")
+    print(f"wear_rate:                 {wear_rate:5.2f} B/s")
+    print(f"savings:                   {savings*100.0:5.2f} %")
