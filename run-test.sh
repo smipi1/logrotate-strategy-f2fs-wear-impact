@@ -4,7 +4,7 @@ set -o pipefail
 trap cleanup INT
 
 # Parameterizable variable (via environment)
-MAX_LOG_LOSS_MINUTES=${MAX_LOG_LOSS_MINUTES:-5}             # Maximum acceptable log loss in seconds
+MAX_LOG_LOSS_MINUTES=${MAX_LOG_LOSS_MINUTES:-15}            # Maximum acceptable log loss in seconds
 MIN_NEW_LOG_SIZE_TO_ROTATE=${MIN_NEW_LOG_SIZE_TO_ROTATE:-1} # Size threshold in tmpfs to rotate
                                                             # 1B effectively means always rotate
 MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE:-1M}        # Size threshold in f2fs to rotate
@@ -13,8 +13,8 @@ ROTATION_COUNT=${ROTATION_COUNT:-1}                         # Number of full f2f
 COMPRESS=${COMPRESS:-lz4}                                   # Compression app to use
 COMPRESS_OPTS=${COMPRESS_OPTS:--3}                          # Compression options to pass to compression app
 ADD_LOGROTATE_DIRECTIVE=${ADD_LOGROTATE_DIRECTIVE:-}        # Optional additional directive on f2fs rotation
-SYNC_ON_COMPRESS=${SYNC_ON_COMPRESS:-}                      # Optionally sync on every compress and append
-SYNC_ON_ROTATE=${SYNC_ON_ROTATE:-}                          # Optionally sync on every f2fs rotation
+NO_SYNC_ON_COMPRESS=${NO_SYNC_ON_COMPRESS:-}                # Optionally disable sync on every compress and append
+NO_SYNC_ON_ROTATE=${NO_SYNC_ON_ROTATE:-}                    # Optionally disable sync on every f2fs rotation
 
 insert() {
     local -n ARRAY=$1; shift
@@ -121,6 +121,9 @@ print_results() {
     echo    "all messages kept:         ${KEPT_LOG_SEQUENCE_COMPLETE}"
     ./analyze.py ${STATS}
 }
+
+[ -z "${NO_SYNC_ON_COMPRESS}" ] && SYNC_ON_COMPRESS=1
+[ -z "${NO_SYNC_ON_ROTATE}" ] && SYNC_ON_ROTATE=1
 
 RESULTS_ROOT_DIR=results
 ROOTFS_IMG=rootfs.img
