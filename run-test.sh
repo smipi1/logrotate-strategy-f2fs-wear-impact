@@ -87,7 +87,7 @@ concatenate_and_decompress_kept_logs() {
 }
 
 decompress_kept_logs_individually() {
-    (cd ${LOG_DIR} && ls -1vr | xargs -n1 ${COMPRESS} -dc - -)
+    (cd ${LOG_DIR} && ls -1vr | xargs -In1 ${COMPRESS} -d {} -)
 }
 
 has_complete_sequence() {
