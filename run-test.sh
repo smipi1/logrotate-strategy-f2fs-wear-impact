@@ -11,7 +11,9 @@ MIN_LOG_SIZE_TO_ROTATE=${MIN_LOG_SIZE_TO_ROTATE:-1M}        # Size threshold in 
 LOG_FILES_TO_KEEP=${LOG_FILES_TO_KEEP:-26}                  # Number of log files to maintain in f2fs
 ROTATION_COUNT=${ROTATION_COUNT:-1}                         # Number of full f2fs rotations to test with
 COMPRESS=${COMPRESS:-lz4}                                   # Compression app to use
-COMPRESS_OPTS=${COMPRESS_OPTS:--3}                          # Compression options to pass to compression app
+COMPRESS_OPTS=${COMPRESS_OPTS:--3}                          # Options to pass to compression app
+RECOMPRESS=${RECOMPRESS:-}                                  # Optional recompression app for downstream transfer
+RECOMPRESS_OPTS=${RECOMPRESS_OPTS:-}                        # Options to pass to the recompression app
 ADD_LOGROTATE_DIRECTIVE=${ADD_LOGROTATE_DIRECTIVE:-}        # Optional additional directive on f2fs rotation
 NO_SYNC_ON_COMPRESS=${NO_SYNC_ON_COMPRESS:-}                # Optionally disable sync on every compress and append
 NO_SYNC_ON_ROTATE=${NO_SYNC_ON_ROTATE:-}                    # Optionally disable sync on every f2fs rotation
@@ -80,8 +82,12 @@ print_stats() {
     ) | space_separated_to_csv >>${STATS}
 }
 
-decompress_kept_logs() {
+concatenate_and_decompress_kept_logs() {
     (cd ${LOG_DIR} && ls -1vr | xargs cat | ${COMPRESS} -dc - -)
+}
+
+decompress_kept_logs_individually() {
+    (cd ${LOG_DIR} && ls -1vr | xargs -n1 ${COMPRESS} -dc - -)
 }
 
 has_complete_sequence() {
@@ -119,6 +125,8 @@ print_results() {
     echo    "extra directives:          ${ADD_LOGROTATE_DIRECTIVE:--}"
     echo    "total rotations:           ${ROTATION_COUNT}"
     echo    "test duration:             $((${END_TIME}-${START_TIME}))s"
+    echo -n "recompression used:        "; [ -z "${RECOMPRESS}" ] && echo "N/A" || echo "${RECOMPRESS} ${RECOMPRESS_OPTS}"
+    echo -n "recompression time:        "; [ -z "${RECOMPRESS}" ] && echo "N/A" || echo "$((${RECOMPRESS_END_TIME}-${RECOMPRESS_START_TIME}))s"
     echo    "all messages kept:         ${KEPT_LOG_SEQUENCE_COMPLETE}"
     ./analyze.py ${STATS}
 }
@@ -150,7 +158,7 @@ LOGROTATE_STATE_FILE=${VAR_DIR}/logrotate.state
 GENERATE_LOG_MESSAGES=./generate-64-byte-syslog-messages.awk
 BYTES_PER_MESSAGE=$(${GENERATE_LOG_MESSAGES} | wc -c)
 FULL_KEEP_ROTATION_SIZE=$(( (${LOG_FILES_TO_KEEP} + 1) * $( numfmt --from=iec ${MIN_LOG_SIZE_TO_ROTATE} ) ))
-RESULTS_DIR=${RESULTS_ROOT_DIR}/every_${LOGROTATE_RATE_SECONDS}s_${MIN_NEW_LOG_SIZE_TO_ROTATE}B.compress_${COMPRESS}${COMPRESS_OPTS//-/_}${SYNC_ON_COMPRESS:++sync}.keep_${MIN_LOG_SIZE_TO_ROTATE}x${LOG_FILES_TO_KEEP}${ADD_LOGROTATE_DIRECTIVE:++${ADD_LOGROTATE_DIRECTIVE}}${SYNC_ON_ROTATE:++sync}.x${ROTATION_COUNT}
+RESULTS_DIR=${RESULTS_ROOT_DIR}/every_${LOGROTATE_RATE_SECONDS}s_${MIN_NEW_LOG_SIZE_TO_ROTATE}B.compress_${COMPRESS}${COMPRESS_OPTS//-/_}${SYNC_ON_COMPRESS:++sync}.keep_${MIN_LOG_SIZE_TO_ROTATE}x${LOG_FILES_TO_KEEP}${ADD_LOGROTATE_DIRECTIVE:++${ADD_LOGROTATE_DIRECTIVE}}${SYNC_ON_ROTATE:++sync}.x${ROTATION_COUNT}${RECOMPRESS:+.recompress_${RECOMPRESS}${RECOMPRESS_OPTS//-/_}}
 STATS=${RESULTS_DIR}/teststats.log.csv
 
 echo "creating ${RESULTS_DIR}..."
@@ -228,11 +236,25 @@ done
 echo
 END_TIME=$(date +%s)
 
-echo "testing for complete compressed log sequence in ${LOG_DIR} ..."
-if decompress_kept_logs | has_complete_sequence; then
-    KEPT_LOG_SEQUENCE_COMPLETE="yes"
+if [ -n "${RECOMPRESS}" ]; then
+    echo "recompress kept logs for transfer to ${LIVE_LOG}.${RECOMPRESS}..."
+    RECOMPRESS_START_TIME=$(date +%s)
+    decompress_kept_logs_individually | ${RECOMPRESS} ${RECOMPRESS_OPTS} -c > ${LIVE_LOG}.${RECOMPRESS}
+    RECOMPRESS_END_TIME=$(date +%s)
+
+    echo "testing for complete recompressed log ${LIVE_LOG}.${RECOMPRESS} ..."
+    if has_complete_sequence <${LIVE_LOG}.${RECOMPRESS}; then
+        KEPT_LOG_SEQUENCE_COMPLETE="yes"
+    else
+        KEPT_LOG_SEQUENCE_COMPLETE="no"
+    fi
 else
-    KEPT_LOG_SEQUENCE_COMPLETE="no"
+    echo "testing for complete compressed log sequence in ${LOG_DIR} ..."
+    if concatenate_and_decompress_kept_logs | has_complete_sequence; then
+        KEPT_LOG_SEQUENCE_COMPLETE="yes"
+    else
+        KEPT_LOG_SEQUENCE_COMPLETE="no"
+    fi
 fi
 
 echo "adding results to ${RESULTS_DIR} ..."
