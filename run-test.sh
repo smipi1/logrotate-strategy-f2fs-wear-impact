@@ -225,11 +225,13 @@ while [ -z "${COMPRESS_COUNT}" ] || [ "${i}" -lt "${COMPRESS_COUNT}" ]; do
     do_rotation
     if [ -z "${COMPRESS_COUNT}" ]; then
         COMPRESSED_ROTATION_SIZE=$(${COMPRESS} ${COMPRESS_OPT} -c ${LIVE_LOG}.1 | wc -c)
-        let "COMPRESS_COUNT = ${ROTATION_COUNT} * ${FULL_KEEP_ROTATION_SIZE} / ${COMPRESSED_ROTATION_SIZE}"
+        let "MIN_COMPRESS_COUNT = ${ROTATION_COUNT} * ${LOG_FILES_TO_KEEP}"
         let "COMPRESSION_RATE = ( ${SIZE_LOGGED} - ${COMPRESSED_ROTATION_SIZE} ) * 100 / ${SIZE_LOGGED}"
+        let "COMPRESS_COUNT = ${ROTATION_COUNT} * ${FULL_KEEP_ROTATION_SIZE} / ${COMPRESSED_ROTATION_SIZE}"
+        [ "${COMPRESS_COUNT}" -lt "${MIN_COMPRESS_COUNT}" ] && COMPRESS_COUNT=${MIN_COMPRESS_COUNT}
     fi
     print_stats
-    printf "running test: $((${i} * 100 / ${COMPRESS_COUNT})) %% complete\r"
+    printf "running test: ${i} / ${COMPRESS_COUNT} ($((${i} * 100 / ${COMPRESS_COUNT}))%% complete) ...\r"
     [ -n "${SLEEP_PER_CYCLE}" ] && sleep ${SLEEP_PER_CYCLE}
     let "i++"
 done
