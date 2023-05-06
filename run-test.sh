@@ -83,11 +83,19 @@ print_stats() {
 }
 
 concatenate_and_decompress_kept_logs() {
-    (cd ${LOG_DIR} && ls -1vr | xargs cat | ${COMPRESS} -dc - -)
+    (cd ${LOG_DIR} && ls -1vr | xargs cat | ${COMPRESS} -dc)
 }
 
 decompress_kept_logs_individually() {
-    (cd ${LOG_DIR} && ls -1vr | xargs -i -n1 ${COMPRESS} -d {} -)
+    (cd ${LOG_DIR} && ls -1vr | xargs -n1 ${COMPRESS} -dc)
+}
+
+recompress() {
+    ${RECOMPRESS} ${RECOMPRESS_OPTS} -c
+}
+
+decompress_recompressed_file() {
+    ${RECOMPRESS} ${RECOMPRESS_OPTS} -dc ${1}
 }
 
 has_complete_sequence() {
@@ -249,11 +257,11 @@ END_TIME=$(date +%s)
 if [ -n "${RECOMPRESS}" ]; then
     echo "recompress kept logs for transfer to ${LIVE_LOG}.${RECOMPRESS}..."
     RECOMPRESS_START_TIME=$(date +%s)
-    decompress_kept_logs_individually | ${RECOMPRESS} ${RECOMPRESS_OPTS} -c > ${LIVE_LOG}.${RECOMPRESS}
+    decompress_kept_logs_individually | recompress >${LIVE_LOG}.${RECOMPRESS}
     RECOMPRESS_END_TIME=$(date +%s)
 
     echo "testing for complete recompressed log ${LIVE_LOG}.${RECOMPRESS} ..."
-    if has_complete_sequence <${LIVE_LOG}.${RECOMPRESS}; then
+    if decompress_recompressed_file ${LIVE_LOG}.${RECOMPRESS} | has_complete_sequence; then
         KEPT_LOG_SEQUENCE_COMPLETE="yes"
     else
         KEPT_LOG_SEQUENCE_COMPLETE="no"
