@@ -87,7 +87,7 @@ concatenate_and_decompress_kept_logs() {
 }
 
 decompress_kept_logs_individually() {
-    (cd ${LOG_DIR} && ls -1vr | xargs -In1 ${COMPRESS} -d {} -)
+    (cd ${LOG_DIR} && ls -1vr | xargs -i -n1 ${COMPRESS} -d {} -)
 }
 
 has_complete_sequence() {
@@ -105,10 +105,18 @@ has_complete_sequence() {
                 if(delta != 1) {
                     # jump in sequence
                     printf("error: sequence incorrect at message %d: expected delta=1, but got delta=%d\n", message_count, delta);
-                    exit 1
+                    exit 1;
                 }
             }
             prev_seq_nr = seq_nr
+        }
+        END {
+            if(message_count > 0) {
+                printf("complete sequence of %d messages\n", message_count);
+            } else {
+                printf("error: no messages\n");
+                exit 1;
+            }
         }
     '
 }
